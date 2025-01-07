@@ -44,7 +44,7 @@ async def get_game_states(
     try:
         return await projector.get_game_states(game_id, from_time, to_time)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 @app.get("/api/v1/replays/{game_id}/video")
 async def get_replay_video(
@@ -56,7 +56,7 @@ async def get_replay_video(
     """Get video replay of a game"""
     try:
         # Create temporary file for video
-        output_path = TEMP_DIR / f"{game_id}_{datetime.utcnow().timestamp()}.mp4"
+        output_path = TEMP_DIR / f"{game_id}_{datetime.now().timestamp()}.mp4"
         
         # Generate video
         await projector.create_replay_video(
@@ -74,4 +74,4 @@ async def get_replay_video(
             filename=f"replay_{game_id}.mp4"
         )
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e

@@ -23,7 +23,7 @@ class GameState(BaseModel):
 class Event(BaseModel):
     game_id: str
     sequence: int
-    timestamp: datetime = Field(default_factory=datetime.now(datetime.timezone.utc))
+    timestamp: datetime = Field(default_factory=datetime.now)
     state: GameState
 
     class Config:

@@ -70,7 +70,7 @@ class EventHandler:
             event = Event(
                 game_id=game_id,
                 sequence=sequence,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(),
                 state=current_state
             )
             await self.event_store.store_event(event)
