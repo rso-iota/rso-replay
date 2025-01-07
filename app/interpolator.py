@@ -2,19 +2,29 @@ from typing import List
 import numpy as np
 from .models import GameState, Player, Food, Circle
 
-def interpolate_game_states(states: List[GameState], target_fps: int) -> List[GameState]:
+def interpolate_game_states(states: List[GameState], target_fps: int, speed: float = 3.0) -> List[GameState]:
     """
-    Interpolate between game states to achieve target FPS.
+    Interpolate between game states to achieve target FPS at specified speed.
     Each game state is assumed to be 0.2s apart (5 FPS).
+    
+    Parameters:
+        states: List of game states to interpolate between
+        target_fps: Target frames per second for the output
+        speed: Speed multiplier (1.0 = normal speed, 2.0 = double speed, 0.5 = half speed)
     """
     if not states or len(states) < 2:
         return states
 
-    source_fps = 5  # Given states are at 5 FPS
-    frames_between = target_fps // source_fps - 1  # Number of frames to insert between each state
+    source_fps = 2  # Given states are at 5 FPS
+    
+    # Adjust frames between states based on speed multiplier
+    # Higher speed = fewer frames between states
+    frames_between = int((target_fps / speed) // source_fps - 1)
     
     if frames_between <= 0:
-        return states
+        # If speed is too high to interpolate, sample states instead
+        sample_rate = int(speed)
+        return states[::sample_rate]
 
     interpolated_states: List[GameState] = []
     
