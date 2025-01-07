@@ -4,6 +4,7 @@ from datetime import datetime
 from .models import GameState, Event
 from .event_store import EventStore
 from .renderer import GameRenderer
+from .interpolator import interpolate_game_states
 
 class Projector:
     def __init__(self, event_store: EventStore, renderer: GameRenderer):
@@ -40,9 +41,12 @@ class Projector:
         states = await self.get_game_states(game_id, from_time, to_time)
         if not states:
             raise ValueError(f"No game states found for game {game_id}")
+        
+        # Interpolate states to achieve target FPS
+        interpolated_states = interpolate_game_states(states, fps)
             
         return await self.renderer.create_video(
-            states=states,
+            states=interpolated_states,
             output_path=output_path,
             frames_path=frames_path,
             fps=fps
