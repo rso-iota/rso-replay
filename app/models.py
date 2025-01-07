@@ -1,40 +1,59 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
+
+class Circle(BaseModel):
+    x: float
+    y: float
+    radius: float
+
+class Food(BaseModel):
+    index: int
+    circle: Circle
+
+class Player(BaseModel):
+    name: str
+    alive: bool
+    circle: Circle
+
+class GameState(BaseModel):
+    players: List[Player]
+    food: List[Food]
 
 class Event(BaseModel):
     game_id: str
     sequence: int
-    event_type: str
-    payload: Dict[str, Any]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now(datetime.timezone.utc))
+    state: GameState
 
-class GameState(BaseModel):
-    game_id: str
-    board: Dict[str, Any]  # Current game board state
-    players: Dict[str, Any]  # Player information
-    current_turn: Optional[str] = None
-    status: str = "in_progress"
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
-
-    def apply_event(self, event: Event) -> None:
-        """Apply an event to the current state"""
-        if event.event_type == "game_started":
-            self.board = event.payload.get("initial_board", {})
-            self.players = event.payload.get("players", {})
-            self.current_turn = event.payload.get("first_turn")
-            
-        elif event.event_type == "move_made":
-            # Update board with the new move
-            move = event.payload.get("move", {})
-            # Update board state based on move
-            # This is a placeholder - actual implementation depends on game rules
-            self.board.update(move)
-            # Update current turn
-            self.current_turn = event.payload.get("next_turn")
-            
-        elif event.event_type == "game_ended":
-            self.status = "completed"
-            self.current_turn = None
-            
-        self.last_updated = event.timestamp
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "game_id": "game123",
+                "sequence": 1,
+                "timestamp": "2024-01-07T12:00:00Z",
+                "state": {
+                    "players": [
+                        {
+                            "name": "Player1",
+                            "alive": True,
+                            "circle": {
+                                "x": 100,
+                                "y": 100,
+                                "radius": 10
+                            }
+                        }
+                    ],
+                    "food": [
+                        {
+                            "index": 0,
+                            "circle": {
+                                "x": 200,
+                                "y": 200,
+                                "radius": 5
+                            }
+                        }
+                    ]
+                }
+            }
+        }

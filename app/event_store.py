@@ -10,7 +10,7 @@ class EventStore:
 
     async def store_event(self, event: Event) -> None:
         """Store a new event in the database"""
-        await self.events.insert_one(event.dict())
+        await self.events.insert_one(event.model_dump())
 
     async def get_events(self, game_id: str) -> List[Event]:
         """Get all events for a game ordered by sequence"""

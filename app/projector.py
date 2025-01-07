@@ -1,27 +1,43 @@
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional
 from datetime import datetime
 from .models import GameState, Event
 from .event_store import EventStore
+from .renderer import GameRenderer
 
 class Projector:
-    def __init__(self, event_store: EventStore):
+    def __init__(self, event_store: EventStore, renderer: GameRenderer):
         self.event_store = event_store
+        self.renderer = renderer
 
-    async def reconstruct_state(self, game_id: str, until_time: Optional[datetime] = None) -> GameState:
-        """Reconstruct game state by replaying events"""
+    async def get_game_states(
+        self, 
+        game_id: str, 
+        from_time: Optional[datetime] = None,
+        to_time: Optional[datetime] = None
+    ) -> List[GameState]:
+        """Get all game states for a game within the specified time range"""
         events = await self.event_store.get_events(game_id)
         
-        # Initialize empty state
-        state = GameState(
-            game_id=game_id,
-            board={},
-            players={},
-        )
+        # Filter events by time range if specified
+        if from_time:
+            events = [e for e in events if e.timestamp >= from_time]
+        if to_time:
+            events = [e for e in events if e.timestamp <= to_time]
+            
+        return [event.state for event in events]
 
-        # Apply each event in sequence
-        for event in events:
-            if until_time and event.timestamp > until_time:
-                break
-            state.apply_event(event)
-
-        return state
+    async def create_replay_video(
+        self,
+        game_id: str,
+        output_path: Path,
+        fps: int = 30,
+        from_time: Optional[datetime] = None,
+        to_time: Optional[datetime] = None
+    ) -> Path:
+        """Create a video replay of the game"""
+        states = await self.get_game_states(game_id, from_time, to_time)
+        if not states:
+            raise ValueError(f"No game states found for game {game_id}")
+            
+        return await self.renderer.create_video(states, output_path, fps)
