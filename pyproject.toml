@@ -13,6 +13,7 @@ dependencies = [
     "Pillow>=10.1.0", # for frame generation
     "numpy>=1.26.2", # for image manipulation
     "ffmpeg-python>=0.2.0", # for video creation
+    "pydantic-settings>=2.7.1",
 ]
 
 [project.optional-dependencies]

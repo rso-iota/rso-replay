@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw
 import ffmpeg
 import numpy as np
 from .models import GameState, Player, Food
+from .config.settings import Settings
 import asyncio
 
 class GameRenderer:
@@ -11,15 +12,31 @@ class GameRenderer:
         self,
         width: int = 800,
         height: int = 600,
+        game_width: float = 1000.0,
+        game_height: float = 800.0,
         background_color: str = "black",
         player_colors: List[str] = None,
         food_color: str = "white",
     ):
         self.width = width
         self.height = height
+        self.game_width = game_width
+        self.game_height = game_height
         self.background_color = background_color
         self.player_colors = player_colors or ["red", "blue", "green", "yellow", "purple"]
         self.food_color = food_color
+        
+        # Calculate scaling factors
+        self.scale_x = self.width / self.game_width
+        self.scale_y = self.height / self.game_height
+
+    def map_to_pixels(self, x: float, y: float, radius: float) -> tuple[float, float, float]:
+        """Map game coordinates and radius to pixel values"""
+        pixel_x = x * self.scale_x
+        pixel_y = y * self.scale_y
+        # Scale radius proportionally using the smaller scale factor to maintain circular shape
+        pixel_radius = radius * min(self.scale_x, self.scale_y)
+        return pixel_x, pixel_y, pixel_radius
 
     def render_frame(self, state: GameState) -> Image.Image:
         """Render a single frame from game state"""
@@ -29,11 +46,16 @@ class GameRenderer:
 
         # Draw food items
         for food in state.food:
-            self._draw_circle(
-                draw,
+            x, y, radius = self.map_to_pixels(
                 food.circle.x,
                 food.circle.y,
-                food.circle.radius,
+                food.circle.radius
+            )
+            self._draw_circle(
+                draw,
+                x,
+                y,
+                radius,
                 self.food_color
             )
 
@@ -46,12 +68,17 @@ class GameRenderer:
         # Draw players
         for i, player in enumerate(sorted_players):
             if player.alive:
+                x, y, radius = self.map_to_pixels(
+                    player.circle.x,
+                    player.circle.y,
+                    player.circle.radius
+                )
                 color = self.player_colors[i % len(self.player_colors)]
                 self._draw_circle(
                     draw,
-                    player.circle.x,
-                    player.circle.y,
-                    player.circle.radius,
+                    x,
+                    y,
+                    radius,
                     color
                 )
 
@@ -129,4 +156,4 @@ class GameRenderer:
             try:
                 frames_path.rmdir()
             except:
-                pass  # Directory might not be empty or might not exist
+                pass  # Directory might not be empty
