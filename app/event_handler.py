@@ -1,8 +1,11 @@
 import json
 from nats.aio.client import Client as NATS
 from datetime import datetime
-from .models import Event, GameState, Player, Food
+from .models import Event, GameState, Player, Food, Circle
 from .event_store import EventStore
+import logging
+logging.basicConfig(level=logging.INFO, format='{"time": "%(asctime)s", "level": "%(levelname)s", "message": "%(message)s"}')
+logger = logging.getLogger(__name__)
 
 class EventHandler:
     def __init__(self, nats_url: str, event_store: EventStore):
@@ -23,6 +26,7 @@ class EventHandler:
     async def handle_game_state(self, msg):
         """Handle incoming game state message"""
         try:
+            logger.debug(f"Received message: {msg.subject}")
             # Parse message
             data = json.loads(msg.data.decode())
             
@@ -34,13 +38,28 @@ class EventHandler:
                 return  # Skip non-gameState messages
                 
             state_data = data["data"]
+            players = []
+            for player in state_data["players"]:
+                players.append(Player(
+                    name=player["playerName"],
+                    alive=player["alive"],
+                    circle=Circle(**player["circle"])
+                ))
+            food = []
+            for f in state_data["food"]:
+                food.append(Food(
+                    index=f["index"],
+                    circle=Circle(**f["circle"])
+                ))
             
+
             # Create game state
             state = GameState(
-                players=[Player(**p) for p in state_data["players"]],
-                food=[Food(**f) for f in state_data["food"]]
+                players=players,
+                food=food
             )
             
+            logger.info(f"Saving game state for game {game_id}")
             # Store as new event
             sequence = await self.event_store.get_latest_sequence(game_id) + 1
             event = Event(

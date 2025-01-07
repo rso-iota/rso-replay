@@ -1,10 +1,10 @@
-from typing import List, AsyncIterator
-import asyncio
+from pathlib import Path
+from typing import List
 from PIL import Image, ImageDraw
 import ffmpeg
 import numpy as np
-from io import BytesIO
 from .models import GameState, Player, Food
+import asyncio
 
 class GameRenderer:
     def __init__(
@@ -21,8 +21,8 @@ class GameRenderer:
         self.player_colors = player_colors or ["red", "blue", "green", "yellow", "purple"]
         self.food_color = food_color
 
-    def render_frame(self, state: GameState) -> bytes:
-        """Render a single frame from game state and return raw bytes"""
+    def render_frame(self, state: GameState) -> Image.Image:
+        """Render a single frame from game state"""
         # Create new image with background
         image = Image.new('RGB', (self.width, self.height), self.background_color)
         draw = ImageDraw.Draw(image)
@@ -55,8 +55,7 @@ class GameRenderer:
                     color
                 )
 
-        # Convert to raw bytes in RGB format
-        return np.array(image).tobytes()
+        return image
 
     def _draw_circle(
         self,
@@ -76,54 +75,58 @@ class GameRenderer:
     async def create_video(
         self,
         states: List[GameState],
+        output_path: Path,
+        frames_path: Path,
         fps: int = 30
-    ) -> bytes:
-        """Create video from game states and return raw bytes"""
+    ) -> Path:
+        """Create video from a list of game states"""
         if not states:
             raise ValueError("No states provided")
 
-        # Set up ffmpeg process for streaming
-        process = (
-            ffmpeg
-            .input(
-                'pipe:',                   # Read from pipe
-                format='rawvideo',         # Raw video format
-                pix_fmt='rgb24',           # RGB pixel format
-                s=f'{self.width}x{self.height}',  # Frame size
-                framerate=fps              # Frame rate
-            )
-            .output(
-                'pipe:',                   # Output to pipe
-                format='mp4',              # Output format
-                pix_fmt='yuv420p',         # Standard pixel format for MP4
-                vcodec='h264',             # Video codec
-                acodec='none',             # No audio
-                preset='ultrafast',        # Fastest encoding
-                crf=23,                    # Reasonable quality
-                movflags='frag_keyframe+empty_moov'  # Streaming-friendly flags
-            )
-            .overwrite_output()
-            .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
-        )
+        # Ensure frames directory exists
+        frames_path.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Stream each frame to ffmpeg
-            for state in states:
-                frame_data = self.render_frame(state)
-                process.stdin.write(frame_data)
+            # Render all frames
+            for i, state in enumerate(states):
+                frame = self.render_frame(state)
+                frame_path = frames_path / f"frame_{i:06d}.png"
+                frame.save(frame_path)
 
-            # Close stdin to signal end of frames
-            process.stdin.close()
-            
-            # Read the output video data
-            output_data = await process.stdout.read()
-            
-            # Wait for the process to finish
-            await process.wait()
+            # Create video from frames using ffmpeg subprocess
+            cmd = [
+                'ffmpeg',
+                '-y',  # Overwrite output file if it exists
+                '-framerate', str(fps),
+                '-i', str(frames_path / "frame_%06d.png"),
+                '-c:v', 'h264',
+                '-pix_fmt', 'yuv420p',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-movflags', 'frag_keyframe+empty_moov',
+                str(output_path)
+            ]
 
-            return output_data
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
 
-        except Exception as e:
-            # Make sure to terminate ffmpeg on error
-            process.kill()
-            raise e
+            stdout, stderr = await process.communicate()
+
+            if process.returncode != 0:
+                raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
+
+            return output_path
+
+        finally:
+            # Clean up frame files if they exist
+            for frame_file in frames_path.glob("frame_*.png"):
+                frame_file.unlink()
+
+            # Try to remove frames directory
+            try:
+                frames_path.rmdir()
+            except:
+                pass  # Directory might not be empty or might not exist

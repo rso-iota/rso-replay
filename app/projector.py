@@ -31,6 +31,7 @@ class Projector:
         self,
         game_id: str,
         output_path: Path,
+        frames_path: Path,
         fps: int = 30,
         from_time: Optional[datetime] = None,
         to_time: Optional[datetime] = None
@@ -40,4 +41,9 @@ class Projector:
         if not states:
             raise ValueError(f"No game states found for game {game_id}")
             
-        return await self.renderer.create_video(states, output_path, fps)
+        return await self.renderer.create_video(
+            states=states,
+            output_path=output_path,
+            frames_path=frames_path,
+            fps=fps
+        )
