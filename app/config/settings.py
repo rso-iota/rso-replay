@@ -26,10 +26,10 @@ class Settings(BaseSettings):
     game_height: float = Field(600.0, description="Game height in game units")
     
     # Video settings (output video dimensions)
-    video_width: int = Field(800, description="Video width in pixels")
-    video_height: int = Field(600, description="Video height in pixels")
+    video_width: int = Field(400, description="Video width in pixels")
+    video_height: int = Field(300, description="Video height in pixels")
     default_fps: int = Field(30, description="Default video FPS")
-    source_fps: int = Field(5, description="Source game state FPS")
+    source_fps: int = Field(2, description="Source game state FPS")
     
     # File storage settings
     temp_dir: Path = Field(

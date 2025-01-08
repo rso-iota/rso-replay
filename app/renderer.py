@@ -1,9 +1,10 @@
 from pathlib import Path
 import random
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from PIL import Image, ImageDraw, ImageOps
 import asyncio
 import logging
+from io import BytesIO
 
 from .models import GameState, Player, Food
 
@@ -33,7 +34,10 @@ class GameRenderer:
         # Calculate scaling factors
         self.scale_x = self.width / self.game_width
         self.scale_y = self.height / self.game_height
-
+        
+        # Cache for resized skins
+        self.skin_cache: Dict[Tuple[int, int], Image.Image] = {}
+        
         # Load and cache skin images
         self.skins = self._load_skins()
         self.player_skins: Dict[str, Image.Image] = {}  # Maps player names to their assigned skins
@@ -47,33 +51,23 @@ class GameRenderer:
 
     def _circle_crop_image(self, image: Image.Image) -> Image.Image:
         """Crop an image into a circle"""
-        # Convert to RGBA if not already
         if image.mode != 'RGBA':
             image = image.convert('RGBA')
             
-        # Create a square image with equal width and height (take the smaller dimension)
         size = min(image.size)
-        
-        # Crop to square from center
         image = ImageOps.fit(image, (size, size), centering=(0.5, 0.5))
-        
-        # Create circular mask
         mask = self._create_circular_mask((size, size))
-        
-        # Apply mask
         output = Image.new('RGBA', (size, size), (0, 0, 0, 0))
         output.paste(image, (0, 0))
         output.putalpha(mask)
-        
         return output
 
     def _load_skins(self) -> List[Image.Image]:
-        """Load all skin images from the skins directory and crop them to circles"""
+        """Load all skin images from the skins directory"""
         skins = []
         if self.skins_dir.exists():
             for img_path in self.skins_dir.glob("*.jpg"):
                 try:
-                    # Load and crop to circle
                     img = Image.open(img_path).convert("RGBA")
                     img = self._circle_crop_image(img)
                     skins.append(img)
@@ -88,51 +82,47 @@ class GameRenderer:
             return None
             
         if player_name not in self.player_skins:
-            # Assign a random skin to this player
             skin = random.choice(self.skins)
             self.player_skins[player_name] = skin
         
         return self.player_skins[player_name]
 
-    def map_to_pixels(self, x: float, y: float, radius: float) -> tuple[float, float, float]:
+    def _get_resized_skin(self, skin: Image.Image, size: int) -> Image.Image:
+        """Get or create a resized version of a skin"""
+        cache_key = (id(skin), size)
+        if cache_key not in self.skin_cache:
+            resized = skin.copy()
+            resized.thumbnail((size, size), Image.Resampling.LANCZOS)
+            self.skin_cache[cache_key] = resized
+        return self.skin_cache[cache_key]
+
+    def map_to_pixels(self, x: float, y: float, radius: float) -> tuple[int, int, int]:
         """Map game coordinates and radius to pixel values"""
-        pixel_x = x * self.scale_x
-        pixel_y = y * self.scale_y
-        pixel_radius = radius * min(self.scale_x, self.scale_y)
+        pixel_x = round(x * self.scale_x)
+        pixel_y = round(y * self.scale_y)
+        pixel_radius = round(radius * min(self.scale_x, self.scale_y))
         return pixel_x, pixel_y, pixel_radius
 
     def _draw_player(
         self,
+        draw: ImageDraw.ImageDraw,
         image: Image.Image,
         player: Player,
         color: str,
-        x: float,
-        y: float,
-        radius: float
+        x: int,
+        y: int,
+        radius: int
     ) -> None:
         """Draw a player with their skin overlay"""
-        # Get skin if available
         skin = self._get_player_skin(player.name)
         
         if skin:
-            # If we have a skin, only use it without background circle
-            skin_size = int(radius * 2)
-            try:
-                # Resize skin
-                skin_resized = skin.copy()
-                skin_resized.thumbnail((skin_size, skin_size), Image.Resampling.LANCZOS)
-                
-                # Calculate position to center the skin on the circle
-                paste_x = int(x - skin_resized.width / 2)
-                paste_y = int(y - skin_resized.height / 2)
-                
-                # Paste the skin with transparency
-                image.paste(skin_resized, (paste_x, paste_y), skin_resized)
-            except Exception as e:
-                logger.error({"message": f"Failed to apply skin for {player.name}: {str(e)}"})
+            skin_size = radius * 2
+            skin_resized = self._get_resized_skin(skin, skin_size)
+            paste_x = x - skin_resized.width // 2
+            paste_y = y - skin_resized.height // 2
+            image.paste(skin_resized, (paste_x, paste_y), skin_resized)
         else:
-            # If no skin is available, draw colored circle
-            draw = ImageDraw.Draw(image)
             left = x - radius
             top = y - radius
             right = x + radius
@@ -141,33 +131,30 @@ class GameRenderer:
 
     def render_frame(self, state: GameState) -> Image.Image:
         """Render a single frame from game state"""
-        # Create new image with background
-        image = Image.new('RGBA', (self.width, self.height), self.background_color)
-
-        # Draw food items
+        # Create new image directly in RGB mode
+        image = Image.new('RGB', (self.width, self.height), self.background_color)
         draw = ImageDraw.Draw(image)
+
+        # Batch draw food items
+        food_circles = [
+            [x - r, y - r, x + r, y + r]
+            for food in state.food
+            for x, y, r in [self.map_to_pixels(
+                food.circle.x,
+                food.circle.y,
+                food.circle.radius
+            )]
+        ]
         for food in state.food:
             x, y, radius = self.map_to_pixels(
                 food.circle.x,
                 food.circle.y,
                 food.circle.radius
             )
-            self._draw_circle(
-                draw,
-                x,
-                y,
-                radius,
-                self.food_color
-            )
+            draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=self.food_color)
 
-        # Sort players by radius (smallest to largest)
-        sorted_players = sorted(
-            state.players,
-            key=lambda p: p.circle.radius
-        )
-
-        # Draw players
-        for i, player in enumerate(sorted_players):
+        # Draw players (max 5, no need to sort)
+        for i, player in enumerate(state.players):
             if player.alive:
                 x, y, radius = self.map_to_pixels(
                     player.circle.x,
@@ -175,25 +162,9 @@ class GameRenderer:
                     player.circle.radius
                 )
                 color = self.player_colors[i % len(self.player_colors)]
-                self._draw_player(image, player, color, x, y, radius)
+                self._draw_player(draw, image, player, color, x, y, radius)
 
-        # Convert to RGB for video encoding
-        return image.convert('RGB')
-
-    def _draw_circle(
-        self,
-        draw: ImageDraw.ImageDraw,
-        x: float,
-        y: float,
-        radius: float,
-        color: str
-    ) -> None:
-        """Helper to draw a circle"""
-        left = x - radius
-        top = y - radius
-        right = x + radius
-        bottom = y + radius
-        draw.ellipse([left, top, right, bottom], fill=color)
+        return image
 
     async def create_video(
         self,
@@ -210,20 +181,13 @@ class GameRenderer:
         frames_path.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Render all frames
-            logger.info(f"Rendering {len(states)} frames")
-            for i, state in enumerate(states):
-                frame = self.render_frame(state)
-                frame_path = frames_path / f"frame_{i:06d}.png"
-                frame.save(frame_path)
-
-            logger.info(f"Creating video at {fps} FPS")
-            # Create video from frames using ffmpeg subprocess
+            # Set up ffmpeg process to stream frames
             cmd = [
                 'ffmpeg',
-                '-y',  # Overwrite output file if it exists
+                '-y',  # Overwrite output file if exists
+                '-f', 'image2pipe',
                 '-framerate', str(fps),
-                '-i', str(frames_path / "frame_%06d.png"),
+                '-i', '-',  # Read from pipe
                 '-c:v', 'h264',
                 '-pix_fmt', 'yuv420p',
                 '-preset', 'medium',
@@ -234,10 +198,34 @@ class GameRenderer:
 
             process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
 
+            logger.info(f"Rendering {len(states)} frames")
+            
+            # Render and stream frames directly to ffmpeg
+            for state in states:
+                frame = self.render_frame(state)
+                # Save frame to bytes
+                frame_bytes = BytesIO()
+                frame.save(frame_bytes, format='PNG')
+                # Write frame to ffmpeg's stdin
+                if process.stdin:
+                    try:
+                        process.stdin.write(frame_bytes.getvalue())
+                        await process.stdin.drain()
+                    except Exception as e:
+                        logger.error(f"Failed to write frame: {str(e)}")
+                        break
+
+            # Close stdin to signal end of input
+            if process.stdin:
+                process.stdin.close()
+                await process.stdin.wait_closed()
+
+            # Wait for ffmpeg to finish
             stdout, stderr = await process.communicate()
 
             if process.returncode != 0:
@@ -246,12 +234,12 @@ class GameRenderer:
             logger.info(f"Video saved to {output_path}")
             return output_path
 
-        finally:
-            # Clean up frame files if they exist
-            for frame_file in frames_path.glob("frame_*.png"):
-                frame_file.unlink()
+        except Exception as e:
+            logger.error(f"Failed to create video: {str(e)}")
+            raise
 
-            # Try to remove frames directory
+        finally:
+            # Clean up temporary files
             try:
                 frames_path.rmdir()
             except:
