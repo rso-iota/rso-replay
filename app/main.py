@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title=settings.service_name,
     version=settings.api_version,
-    docs_url="/api/v1/replays/public/docs",  # Modified docs endpoint
+    docs_url="/api/v1/replays/public/docs",  # Modified docs endpoint,
+    openapi_url="/api/v1/replays/public/openapi.json",  # Modified OpenAPI endpoint
     redoc_url=None  # Disable ReDoc
 )
 
