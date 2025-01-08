@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     
     # NATS settings
     nats_url: str = Field("nats://localhost:4222", description="NATS connection URL")
-    nats_subject: str = Field("game.events.*", description="NATS subject to subscribe to")
+    nats_subject: str = Field("game_state.*", description="NATS subject to subscribe to")
     
     # Game dimensions (actual play area)
     game_width: float = Field(800.0, description="Game width in game units")
