@@ -20,6 +20,18 @@ class JsonFormatter(logging.Formatter):
 def setup_logging(settings):
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
+
+    def format(self, record):
+        log_record = {
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "name": "root",
+            "level": "INFO",
+            "message": "Logging initialized"
+        }
+        if record.exc_info:
+            log_record['exc_info'] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
+
     
     root_logger = logging.getLogger()
     root_logger.handlers = []

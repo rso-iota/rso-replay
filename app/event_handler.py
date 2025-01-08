@@ -59,7 +59,7 @@ class EventHandler:
                 food=food
             )
             
-            logger.info(f"Saving game state for game {game_id}")
+            logger.debug(f"Saving game state for game {game_id}")
             # Store as new event
             sequence = await self.event_store.get_latest_sequence(game_id) + 1
             event = Event(

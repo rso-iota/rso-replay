@@ -13,4 +13,4 @@ RUN pip install --no-cache-dir .
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-CMD ["uvicorn", "app.main:app", "--port", "8000"]
+CMD ["uvicorn", "app.main:app"]
