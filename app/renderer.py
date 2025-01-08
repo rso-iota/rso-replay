@@ -211,11 +211,13 @@ class GameRenderer:
 
         try:
             # Render all frames
+            logger.info(f"Rendering {len(states)} frames")
             for i, state in enumerate(states):
                 frame = self.render_frame(state)
                 frame_path = frames_path / f"frame_{i:06d}.png"
                 frame.save(frame_path)
 
+            logger.info(f"Creating video at {fps} FPS")
             # Create video from frames using ffmpeg subprocess
             cmd = [
                 'ffmpeg',
@@ -241,6 +243,7 @@ class GameRenderer:
             if process.returncode != 0:
                 raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
 
+            logger.info(f"Video saved to {output_path}")
             return output_path
 
         finally:
