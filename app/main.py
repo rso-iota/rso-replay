@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app
 app = FastAPI(
     title=settings.service_name,
-    version=settings.api_version
+    version=settings.api_version,
+    docs_url="/api/v1/replays/public/docs",  # Modified docs endpoint
+    redoc_url=None  # Disable ReDoc
 )
 
 # Create directories
