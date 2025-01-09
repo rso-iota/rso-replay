@@ -21,6 +21,7 @@ class GameRenderer:
         player_colors: List[str] = None,
         food_color: str = "white",
         skins_dir: Path = None,
+        use_player_skins: bool = False,
     ):
         self.width = width
         self.height = height
@@ -30,6 +31,7 @@ class GameRenderer:
         self.player_colors = player_colors or ["red", "blue", "green", "yellow", "purple"]
         self.food_color = food_color
         self.skins_dir = skins_dir or Path(__file__).parent / "assets" / "skins"
+        self.use_player_skins = use_player_skins
         
         # Calculate scaling factors
         self.scale_x = self.width / self.game_width
@@ -116,7 +118,7 @@ class GameRenderer:
         """Draw a player with their skin overlay"""
         skin = self._get_player_skin(player.name)
         
-        if skin:
+        if self.use_player_skins and skin:
             skin_size = radius * 2
             skin_resized = self._get_resized_skin(skin, skin_size)
             paste_x = x - skin_resized.width // 2

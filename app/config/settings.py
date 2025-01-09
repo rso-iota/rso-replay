@@ -46,6 +46,7 @@ class Settings(BaseSettings):
         default=["red", "blue", "green", "yellow", "purple"],
         description="Player colors"
     )
+    use_player_skins: bool = Field(False, description="Use player skins")
     
     # Logging settings
     log_level: str = Field("INFO", description="Logging level")

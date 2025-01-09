@@ -44,7 +44,8 @@ renderer = GameRenderer(
     game_height=settings.game_height,
     background_color=settings.background_color,
     player_colors=settings.player_colors,
-    food_color=settings.food_color
+    food_color=settings.food_color,
+    use_player_skins=settings.use_player_skins,
 )
 projector = Projector(event_store, renderer)
 event_handler = EventHandler(settings.nats_url, event_store)
