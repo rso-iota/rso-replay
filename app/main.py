@@ -1,9 +1,9 @@
 import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 import logging
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Response, status
 from fastapi.responses import FileResponse
 
 from .config.settings import Settings
@@ -49,17 +49,81 @@ renderer = GameRenderer(
 projector = Projector(event_store, renderer)
 event_handler = EventHandler(settings.nats_url, event_store)
 
+async def try_connect_nats():
+    """Try to connect to NATS with retries"""
+    while True:
+        try:
+            await event_handler.connect()
+            logger.info({"message": "Successfully connected to NATS"})
+            break
+        except Exception as e:
+            logger.warning({"message": f"Failed to connect to NATS: {str(e)}"})
+            await asyncio.sleep(5)  # Wait 5 seconds before retrying
+
 @app.on_event("startup")
 async def startup_event():
-    """Connect to NATS on startup"""
+    """Start the service and attempt NATS connection in background"""
     logger.info({"message": "Starting up replay service"})
-    await event_handler.connect()
+    # Start NATS connection attempt in the background
+    asyncio.create_task(try_connect_nats())
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Close NATS connection on shutdown"""
     logger.info({"message": "Shutting down replay service"})
     await event_handler.close()
+
+@app.get("/health/live", status_code=status.HTTP_200_OK)
+async def liveness_check() -> Dict:
+    """
+    Liveness probe - checks if the service is running
+    Returns 200 if the service is alive
+    """
+    return {
+        "status": "alive",
+        "service": settings.service_name,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@app.get("/health/ready", status_code=status.HTTP_200_OK)
+async def readiness_check() -> Dict:
+    """
+    Readiness probe - checks if the service can handle requests
+    Verifies connections to NATS and MongoDB
+    """
+    # Check NATS connection
+    if not event_handler.nc or not event_handler.nc.is_connected:
+        return Response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content="NATS connection not ready"
+        )
+    
+    # Check MongoDB connection with timeout
+    try:
+        await asyncio.wait_for(
+            event_store.client.admin.command('ping'),
+            timeout=3.0  # 3 seconds timeout
+        )
+    except asyncio.TimeoutError:
+        return Response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content="MongoDB ping timed out after 3 seconds"
+        )
+    except Exception as e:
+        return Response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=f"MongoDB not responding: {str(e)}"
+        )
+
+    return {
+        "status": "ready",
+        "service": settings.service_name,
+        "timestamp": datetime.utcnow().isoformat(),
+        "dependencies": {
+            "nats": "connected",
+            "mongodb": "connected",
+        }
+    }
 
 @app.get(f"/api/{settings.api_version}/replays/{{game_id}}/states")
 async def get_game_states(
@@ -130,9 +194,3 @@ async def get_replay_video(
     except Exception as e:
         logger.error({"message": f"Error generating video: {str(e)}"})
         raise HTTPException(status_code=404, detail=str(e))
-
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": settings.service_name}
