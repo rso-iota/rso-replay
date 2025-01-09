@@ -9,6 +9,7 @@ Service for recording and replaying game sessions in the RSO game system. Provid
 - Generates MP4 video replays of games
 - Supports time-based filtering and speed control
 - Event projection and state reconstruction
+- Health checks (liveness and readiness probes)
 
 ## Installation
 
@@ -92,13 +93,17 @@ Parameters:
 
 Returns MP4 video file.
 
-### Health Check
+### Health Checks
 
 ```http
-GET /health
+GET /health/live
 ```
+Liveness probe - returns service status.
 
-Returns service health status.
+```http
+GET /health/ready
+```
+Readiness probe - verifies MongoDB and NATS connections.
 
 ## Architecture
 
@@ -108,6 +113,7 @@ Components:
 - Projector: Reconstructs game states from events
 - GameRenderer: Generates video frames
 - FastAPI app: Serves HTTP endpoints
+- Health checks: Monitor service and dependency health
 
 Data flow:
 1. Game events arrive via NATS
