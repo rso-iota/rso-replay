@@ -43,6 +43,9 @@ class GameRenderer:
         # Load and cache skin images
         self.skins = self._load_skins()
         self.player_skins: Dict[str, Image.Image] = {}  # Maps player names to their assigned skins
+        
+        # NEW: Dictionary to store consistent player colors
+        self.player_color_mapping: Dict[str, str] = {}
 
     def _create_circular_mask(self, size: tuple[int, int]) -> Image.Image:
         """Create a circular mask of given size"""
@@ -105,18 +108,28 @@ class GameRenderer:
         pixel_radius = round(radius * min(self.scale_x, self.scale_y))
         return pixel_x, pixel_y, pixel_radius
 
+    def _get_player_color(self, player_name: str) -> str:
+        """Get or assign a consistent color for a player"""
+        if player_name not in self.player_color_mapping:
+            available_colors = [c for c in self.player_colors if c not in self.player_color_mapping.values()]
+            if not available_colors:
+                # If we run out of colors, start reusing them
+                available_colors = self.player_colors
+            self.player_color_mapping[player_name] = random.choice(available_colors)
+        return self.player_color_mapping[player_name]
+
     def _draw_player(
         self,
         draw: ImageDraw.ImageDraw,
         image: Image.Image,
         player: Player,
-        color: str,
         x: int,
         y: int,
         radius: int
     ) -> None:
         """Draw a player with their skin overlay"""
         skin = self._get_player_skin(player.name)
+        color = self._get_player_color(player.name)  # Use consistent color for player
         
         if self.use_player_skins and skin:
             skin_size = radius * 2
@@ -137,16 +150,7 @@ class GameRenderer:
         image = Image.new('RGB', (self.width, self.height), self.background_color)
         draw = ImageDraw.Draw(image)
 
-        # Batch draw food items
-        food_circles = [
-            [x - r, y - r, x + r, y + r]
-            for food in state.food
-            for x, y, r in [self.map_to_pixels(
-                food.circle.x,
-                food.circle.y,
-                food.circle.radius
-            )]
-        ]
+        # Draw food
         for food in state.food:
             x, y, radius = self.map_to_pixels(
                 food.circle.x,
@@ -155,16 +159,15 @@ class GameRenderer:
             )
             draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=self.food_color)
 
-        # Draw players (max 5, no need to sort)
-        for i, player in enumerate(state.players):
+        # Draw players (with consistent colors)
+        for player in state.players:
             if player.alive:
                 x, y, radius = self.map_to_pixels(
                     player.circle.x,
                     player.circle.y,
                     player.circle.radius
                 )
-                color = self.player_colors[i % len(self.player_colors)]
-                self._draw_player(draw, image, player, color, x, y, radius)
+                self._draw_player(draw, image, player, x, y, radius)
 
         return image
 
@@ -178,6 +181,15 @@ class GameRenderer:
         """Create video from a list of game states"""
         if not states:
             raise ValueError("No states provided")
+
+        # Pre-assign colors to all players that appear in any state
+        all_players = {
+            player.name
+            for state in states
+            for player in state.players
+        }
+        for player_name in all_players:
+            self._get_player_color(player_name)
 
         # Ensure frames directory exists
         frames_path.mkdir(parents=True, exist_ok=True)
